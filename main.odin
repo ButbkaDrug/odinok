@@ -35,29 +35,32 @@ enemy :: struct {
 	fontSize:       i32,
 	textColor:      rl.Color,
 	text:           cstring,
+	rune:           rune,
 	dest:           rl.Vector2,
+	active:         bool,
 }
 
 
-new_enemy :: proc(pos: rl.Vector2, text: cstring) -> enemy {
+new_enemy :: proc(pos: rl.Vector2, text: cstring, rune: rune) -> enemy {
 	return enemy {
 		position = pos,
 		size = {16, 16},
 		animation_size = {16, 16},
 		color = RED,
-		speed = 200,
+		speed = 50,
 		fontSize = 14,
 		textColor = BASE,
 		text = text,
+		rune = rune,
 		dest = rl.Vector2{SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2},
 	}
 }
 
-update_enemy :: proc(e: enemy) -> enemy {
+update_enemy :: proc(e: ^enemy) {
 
 	//if we reach destination we return
 	if rl.Vector2Equals(e.position, e.dest) {
-		return e
+		return
 	}
 
 	//destination vector - postion vector will give us direction vector
@@ -71,13 +74,8 @@ update_enemy :: proc(e: enemy) -> enemy {
 		new_position = e.dest
 	}
 
-	new_enemy := e
 
-	new_enemy.position = new_position
-
-	return new_enemy
-
-
+	e.position = new_position
 }
 
 draw_enemy :: proc(e: enemy) {
@@ -89,47 +87,92 @@ draw_enemy :: proc(e: enemy) {
 }
 
 
-update_enemies :: proc(enemies: [dynamic]enemy) -> [dynamic]enemy {
-	for enemy, i in enemies {
-		e := update_enemy(enemy)
-		enemies[i] = e
+update_enemies :: proc(enemies: ^[33]enemy) {
+	for &enemy, i in enemies {
+		if enemy.active {
+			update_enemy(&enemy)
+		}
 	}
-
-	return enemies
 }
 
-draw_enemies :: proc(enemies: [dynamic]enemy) {
+draw_enemies :: proc(enemies: [33]enemy) {
 	for enemy in enemies {
+		if !enemy.active do continue
 		draw_enemy(enemy)
 	}
 }
 
-game :: struct {}
+//generates random index within the length  of enemies array
+//and makes enemies[random_index] active, assining random position
+//for now it is static loop that creates 5 enemies
+respown_enemies :: proc(enemies: ^[33]enemy) {
+	for i in 0 ..< 5 {
+		min := i32(0)
+		max := i32(len(enemies) - 1)
+		rand_index := rl.GetRandomValue(min, max)
 
-bullet :: struct {
-	position: rl.Vector2,
-	size:     rl.Vector2,
-	color:    rl.Color,
-	speed:    rl.Color,
-	valid:    bool,
+		enemies[rand_index].active = true
+
+		x := f32(rl.GetRandomValue(0, SCREEN_WIDTH) - SCREEN_WIDTH / 2)
+		y := f32(rl.GetRandomValue(0, SCREEN_HEIGHT) - SCREEN_HEIGHT / 2)
+		enemies[rand_index].position = {x, y}
+	}
 }
 
+//iterates over enemies loop and checks how many entris have
+//active == true. returns the number
+count_enemies_alive :: proc(enemies: ^[33]enemy) -> int {
+	result := 0
 
-new_bullet :: proc(pos: rl.Vector2, target: rl.Vector2)
+	for e in enemies {
+		if e.active {
+			result += 1
+		}
+	}
+
+	return result
+}
 
 main :: proc() {
 
 	rl.InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "For Ales")
 	defer rl.CloseWindow()
+	defer free_all(context.temp_allocator)
 
-	enemies := [dynamic]enemy{}
-	append(&enemies, new_enemy({10, 10}, "F"))
-	append(&enemies, new_enemy({SCREEN_WIDTH, SCREEN_HEIGHT}, "G"))
+	//creating enemies
+	enemies := [33]enemy{}
+	for r, i in 'a' ..= 'z' {
+		x := f32(rl.GetRandomValue(0, SCREEN_WIDTH) - SCREEN_WIDTH / 2)
+		y := f32(rl.GetRandomValue(0, SCREEN_HEIGHT) - SCREEN_HEIGHT / 2)
+		enemies[i] = new_enemy({x, y}, fmt.ctprintf("%v", r), r)
+	}
+
 
 	for !rl.WindowShouldClose() { 	// Detect window close button or ESC key
 
-		enemies = update_enemies(enemies)
+		//process user input
+		key_char := rl.GetCharPressed()
+		for &enemy in enemies {
 
+			if enemy.rune == key_char {
+				enemy.active = false
+				//respown_enemies(&enemies)
+
+			}
+		}
+
+		//update game state
+		enemies_count := count_enemies_alive(&enemies)
+
+		//BUG: ENEMIES LAG ON HIGH NUMBERS
+		if enemies_count < 29 {
+			respown_enemies(&enemies)
+
+		}
+
+		update_enemies(&enemies)
+
+		//redraw frame
 		rl.BeginDrawing()
 		rl.ClearBackground(BASE)
 
