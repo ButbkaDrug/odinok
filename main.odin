@@ -18,14 +18,14 @@ import rl "vendor:raylib"
 SCREEN_WIDTH :: 1024
 SCREEN_HEIGHT :: 768
 
+SPAWN_INTERVAL :: 3
+
 // Some Basic Colors
 BASE :: rl.Color{30, 30, 46, 255}
 TEXT :: rl.Color{205, 214, 244, 255}
 RED :: rl.Color{243, 139, 168, 255}
 GREEN :: rl.Color{166, 227, 161, 255}
 BLUE :: rl.Color{137, 180, 250, 255}
-
-COMBOS :: []string{"LOVE", "POWER", "ALES", "SUPER", "BOSS", "QWERTYUIOPOASDFGHJKLZXCVBNM"}
 
 Player :: struct {
 	rect:   rl.Rectangle,
@@ -39,7 +39,9 @@ new_player :: proc(name: cstring, pos: rl.Vector2, color := GREEN) -> Player {
 	return Player{hp = 100, rect = {pos.x - 16, pos.y - 16, 32, 32}, color = color, name = name}
 }
 
-draw_player :: proc(p: Player) {
+draw_player :: proc() {
+
+	p := game.player
 
 	rl.DrawCircleV(
 		{p.rect.x + p.rect.width / 2, p.rect.y + p.rect.height / 2},
@@ -70,7 +72,7 @@ draw_player :: proc(p: Player) {
 }
 
 
-enemy :: struct {
+Enemy :: struct {
 	id:             int,
 	position:       rl.Vector2,
 	size:           rl.Vector2,
@@ -85,8 +87,9 @@ enemy :: struct {
 }
 
 
-new_enemy :: proc(pos: rl.Vector2, key: rl.KeyboardKey) -> enemy {
-	return enemy {
+new_enemy :: proc(pos: rl.Vector2, key: rl.KeyboardKey) -> Enemy {
+	return Enemy {
+		active = true,
 		position = pos,
 		size = {16, 16},
 		animation_size = {16, 16},
@@ -99,9 +102,9 @@ new_enemy :: proc(pos: rl.Vector2, key: rl.KeyboardKey) -> enemy {
 	}
 }
 
-update_enemy :: proc(enemies: ^[26]enemy, index: int) {
+update_enemy :: proc(index: int) {
 
-	e := &enemies[index]
+	e := &game.enemies[index]
 
 	//if we reach destination we return
 	if rl.Vector2Equals(e.position, e.dest) {
@@ -118,17 +121,17 @@ update_enemy :: proc(enemies: ^[26]enemy, index: int) {
 
 	e.position = new_position
 	player_center := rl.Vector2 {
-		player.rect.x + player.rect.width / 2,
-		player.rect.y + player.rect.height / 2,
+		game.player.rect.x + game.player.rect.width / 2,
+		game.player.rect.y + game.player.rect.height / 2,
 	}
 
-	if rl.CheckCollisionCircles(e.position, e.size.x, player_center, player.rect.width / 2) {
+	if rl.CheckCollisionCircles(e.position, e.size.x, player_center, game.player.rect.width / 2) {
 		e.active = false
-		player.hp -= 10
+		game.player.hp -= 10
 	}
 }
 
-draw_enemy :: proc(e: enemy) {
+draw_enemy :: proc(e: Enemy) {
 	rl.DrawCircleV(e.position, f32(e.size.x), e.color)
 
 	x := i32(e.position.x) - e.fontSize / 2
@@ -137,16 +140,16 @@ draw_enemy :: proc(e: enemy) {
 }
 
 
-update_enemies :: proc(enemies: ^[26]enemy) {
-	for &enemy, i in enemies {
+update_enemies :: proc() {
+	for &enemy, i in game.enemies {
 		if enemy.active {
-			update_enemy(enemies, i)
+			update_enemy(i)
 		}
 	}
 }
 
-draw_enemies :: proc(enemies: [26]enemy) {
-	for enemy in enemies {
+draw_enemies :: proc() {
+	for enemy in game.enemies {
 		if !enemy.active do continue
 		draw_enemy(enemy)
 	}
@@ -155,35 +158,28 @@ draw_enemies :: proc(enemies: [26]enemy) {
 //generates random index within the length  of enemies array
 //and makes enemies[random_index] active, assining random position
 //for now it is static loop that creates 5 enemies
-respown_enemies :: proc(enemies: ^[26]enemy) {
-	fmt.println("respown_enemies call:")
+spawn_enemies :: proc() {
 	min := i32(0)
-	max := i32(len(COMBOS) - 1)
+	max := i32(len(game.combos) - 1)
 	combo_index := rl.GetRandomValue(min, max)
-	combos := COMBOS
 
-	combo := transmute([]u8)combos[combo_index]
+	combo := transmute([]u8)game.combos[combo_index]
 
 
 	for index in combo {
-		fmt.println(index)
-		for &enemy in enemies {
-			if u8(enemy.key) == index {
-				enemy.active = true
-				pos := get_position_outside_the_screen(SCREEN_WIDTH, SCREEN_HEIGHT)
-				enemy.position = pos
-			}
+		pos := get_position_outside_the_screen(SCREEN_WIDTH, SCREEN_HEIGHT)
+		enemy := new_enemy(pos, rl.KeyboardKey(index))
 
-		}
+		append(&game.enemies, enemy)
 	}
 }
 
 //iterates over enemies loop and checks how many entris have
 //active == true. returns the number
-count_enemies_alive :: proc(enemies: [26]enemy) -> int {
+count_enemies_alive :: proc() -> int {
 	result := 0
 
-	for e in enemies {
+	for e in game.enemies {
 		if e.active {
 			result += 1
 		}
@@ -199,7 +195,9 @@ get_position_outside_the_screen :: proc(w, h: c.int) -> rl.Vector2 {
 	return rl.Vector2{f32(x), f32(y)}
 }
 
-draw_ui :: proc(p: Player) {
+draw_ui :: proc() {
+	p := game.player
+
 	offset_x, offset_y: c.int = 10, 10
 	w, h := rl.GetScreenWidth(), rl.GetScreenHeight()
 
@@ -210,8 +208,17 @@ draw_ui :: proc(p: Player) {
 	y += 14
 	rl.DrawText(fmt.ctprintf("Score: %d", p.points), x, y, 14, TEXT)
 }
+Game :: struct {
+	player:   Player,
+	combos:   []string,
+	enemies:  [dynamic]Enemy,
+	spawn_in: f32,
+}
 
-player := Player{}
+game := Game {
+	combos = {"LOVE", "POWER", "ALES", "SUPER", "BOSS", "HOME", "VOLUME", "ODIN", "DADDY"},
+}
+
 
 main :: proc() {
 	//######################################//
@@ -239,26 +246,18 @@ main :: proc() {
 	defer rl.CloseWindow()
 	defer free_all(context.temp_allocator)
 
-	player = new_player("ales", {SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2})
+	//init palyer character
+	game.player = new_player("ales", {SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2})
 
-
-	//creating enemies
-	enemies := [26]enemy{}
-
-	for key, i in rl.KeyboardKey(65) ..= rl.KeyboardKey(90) {
-		if key == .KEY_NULL do continue
-		pos := get_position_outside_the_screen(SCREEN_WIDTH, SCREEN_HEIGHT)
-		enemies[i] = new_enemy(pos, key)
-	}
 
 	for !rl.WindowShouldClose() { 	// Detect window close button or ESC key
 
 		//process user input
 		key := rl.GetKeyPressed()
-		for &enemy in enemies {
+		for &enemy in game.enemies {
 			if enemy.key == key && enemy.active {
 				enemy.active = false
-				player.points += 1
+				game.player.points += 1
 				break
 			}
 		}
@@ -266,28 +265,30 @@ main :: proc() {
 		//--------------***-------------------//
 		//-------update game state------------//
 		//--------------***-------------------//
-		enemies_count := count_enemies_alive(enemies)
+		enemies_count := count_enemies_alive()
 
-		//ALES: I found a bug that would prevent enemies for spowning and
-		//othe wired behaviours it was because a respown function and how
-		//it works. I used to grab random index and then make entity active,
-		//but because our array have empty items, potentially we would make
-		//an empty field active. then it has no letter and practicly invisible
 		if enemies_count < 1 {
-			respown_enemies(&enemies)
-
+			spawn_enemies()
+			game.spawn_in = SPAWN_INTERVAL
 		}
 
-		update_enemies(&enemies)
+		game.spawn_in -= rl.GetFrameTime()
+
+		if game.spawn_in <= 0 {
+			game.spawn_in = SPAWN_INTERVAL
+			spawn_enemies()
+		}
+
+		update_enemies()
 
 
 		//redraw frame
 		rl.BeginDrawing()
 		rl.ClearBackground(BASE)
 
-		draw_enemies(enemies)
-		draw_player(player)
-		draw_ui(player)
+		draw_enemies()
+		draw_player()
+		draw_ui()
 
 		rl.EndDrawing()
 		free_all(context.temp_allocator)
