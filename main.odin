@@ -213,10 +213,32 @@ Game :: struct {
 	combos:   []string,
 	enemies:  [dynamic]Enemy,
 	spawn_in: f32,
+	paused:   bool,
+	over:     bool,
 }
 
+//global game variable for the ease of use
 game := Game {
 	combos = {"LOVE", "POWER", "ALES", "SUPER", "BOSS", "HOME", "VOLUME", "ODIN", "DADDY"},
+}
+
+update_game :: proc() {
+
+	enemies_count := count_enemies_alive()
+
+	if enemies_count < 1 {
+		spawn_enemies()
+		game.spawn_in = SPAWN_INTERVAL
+	}
+
+	game.spawn_in -= rl.GetFrameTime()
+
+	if game.spawn_in <= 0 {
+		game.spawn_in = SPAWN_INTERVAL
+		spawn_enemies()
+	}
+
+	update_enemies()
 }
 
 
@@ -254,32 +276,26 @@ main :: proc() {
 
 		//process user input
 		key := rl.GetKeyPressed()
-		for &enemy in game.enemies {
-			if enemy.key == key && enemy.active {
-				enemy.active = false
-				game.player.points += 1
-				break
+		#partial switch key {
+		case .PAUSE:
+			game.paused = !game.paused
+		case:
+			if game.paused do break
+			if game.over do break
+			for &enemy in game.enemies {
+				if enemy.key == key && enemy.active {
+					enemy.active = false
+					game.player.points += 1
+					break
+				}
 			}
 		}
 
 		//--------------***-------------------//
 		//-------update game state------------//
 		//--------------***-------------------//
-		enemies_count := count_enemies_alive()
 
-		if enemies_count < 1 {
-			spawn_enemies()
-			game.spawn_in = SPAWN_INTERVAL
-		}
-
-		game.spawn_in -= rl.GetFrameTime()
-
-		if game.spawn_in <= 0 {
-			game.spawn_in = SPAWN_INTERVAL
-			spawn_enemies()
-		}
-
-		update_enemies()
+		if !game.paused do update_game()
 
 
 		//redraw frame
