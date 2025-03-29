@@ -35,13 +35,14 @@ enemy :: struct {
 	fontSize:       i32,
 	textColor:      rl.Color,
 	text:           cstring,
-	rune:           rune,
+	//TODO: compare on the rl.KeyboardKey instead of rune
+	key:            rl.KeyboardKey,
 	dest:           rl.Vector2,
 	active:         bool,
 }
 
 
-new_enemy :: proc(pos: rl.Vector2, text: cstring, rune: rune) -> enemy {
+new_enemy :: proc(pos: rl.Vector2, text: cstring, key: rl.KeyboardKey) -> enemy {
 	return enemy {
 		position = pos,
 		size = {16, 16},
@@ -51,7 +52,7 @@ new_enemy :: proc(pos: rl.Vector2, text: cstring, rune: rune) -> enemy {
 		fontSize = 14,
 		textColor = BASE,
 		text = text,
-		rune = rune,
+		key = key,
 		dest = rl.Vector2{SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2},
 	}
 }
@@ -113,8 +114,8 @@ respown_enemies :: proc(enemies: ^[33]enemy) {
 
 		enemies[rand_index].active = true
 
-		x := f32(rl.GetRandomValue(0, SCREEN_WIDTH) - SCREEN_WIDTH / 2)
-		y := f32(rl.GetRandomValue(0, SCREEN_HEIGHT) - SCREEN_HEIGHT / 2)
+		x := f32(rl.GetRandomValue(0, SCREEN_WIDTH))
+		y := f32(rl.GetRandomValue(0, SCREEN_HEIGHT))
 		enemies[rand_index].position = {x, y}
 	}
 }
@@ -141,22 +142,21 @@ main :: proc() {
 
 	//creating enemies
 	enemies := [33]enemy{}
-	for r, i in 'a' ..= 'z' {
-		x := f32(rl.GetRandomValue(0, SCREEN_WIDTH) - SCREEN_WIDTH / 2)
-		y := f32(rl.GetRandomValue(0, SCREEN_HEIGHT) - SCREEN_HEIGHT / 2)
+
+	for r, i in rl.KeyboardKey(65) ..= rl.KeyboardKey(90) {
+		x := f32(rl.GetRandomValue(0, SCREEN_WIDTH))
+		y := f32(rl.GetRandomValue(0, SCREEN_HEIGHT))
 		enemies[i] = new_enemy({x, y}, fmt.ctprintf("%v", r), r)
 	}
-
 
 	for !rl.WindowShouldClose() { 	// Detect window close button or ESC key
 
 		//process user input
-		key_char := rl.GetCharPressed()
+		key := rl.GetKeyPressed()
 		for &enemy in enemies {
 
-			if enemy.rune == key_char {
+			if enemy.key == key {
 				enemy.active = false
-				//respown_enemies(&enemies)
 
 			}
 		}
@@ -164,8 +164,9 @@ main :: proc() {
 		//update game state
 		enemies_count := count_enemies_alive(&enemies)
 
-		//BUG: ENEMIES LAG ON HIGH NUMBERS
-		if enemies_count < 29 {
+		//BUG: ENEMIES ARE DESTROYED BY WRONG KEYS ON HIGH NUMBERS
+		//TODO: find out what's causing the bug (and possibly fix it)
+		if enemies_count < 5 {
 			respown_enemies(&enemies)
 
 		}
